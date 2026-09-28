@@ -10,27 +10,58 @@ description: |
 
 > **数据来自第三方公开网站，不构成投资建议。**
 
-## 安装依赖
+## 本机环境（2026-09-28 配置实测）
 
-首次使用前安装 Python 依赖：
+- **Python**：`/Users/niusl321/.workbuddy/binaries/python/envs/default/bin/python`（依赖 httpx / requests / bs4 / lxml / opencc 已装齐，无需再装）
+- **项目路径**：`/Users/niusl321/.workbuddy/skills/hk-ipo-research-assistant`
+- **⚠ 网络**：本机设了 HTTP 代理（`127.0.0.1:62417`）但常为死端口。所有调用**必须清掉代理环境变量**，否则秒挂：
 
 ```bash
-cd <skill_dir>
-pip install -r scripts/requirements.txt
+env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy \
+  /Users/niusl321/.workbuddy/binaries/python/envs/default/bin/python \
+  scripts/hkipo.py <命令>
 ```
 
-需要 Python 3.10+。
+> macOS 无 `timeout` 命令，别用。
 
 ## 调用方式
 
-所有命令通过 Python 调用：
-
 ```bash
-cd <skill_dir>
-python3 scripts/hkipo.py <命令> [参数]
+cd /Users/niusl321/.workbuddy/skills/hk-ipo-research-assistant/scripts
+env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy \
+  /Users/niusl321/.workbuddy/binaries/python/envs/default/bin/python hkipo.py <命令>
 ```
 
-以下文档中的命令（如 `overview`、`analyze 02692`）都省略了前缀，实际调用时加上 `python3 scripts/hkipo.py`。
+## 数据源健康状态（2026-09-28 实测，重要）
+
+| 数据源 | 状态 | 影响 |
+|---|---|---|
+| **AiPO**（aipo，主力） | ❌ **域名已死** `NXDOMAIN` | `overview` / `margin` / `cornerstone` / `rating` / `grey` / `analyze` **全部不可用** |
+| aastocks | ❌ 不通 | `margin` 备用源也挂 |
+| 港交所披露易 `hkex` | ✅ **可用，数据新鲜** | 在审 IPO + 招股书 PDF 直链 |
+| 集思录 `jisilu` | ✅ 可用 | 历史 IPO（首日涨幅/超购/保荐人） |
+| 保荐人排名 `sponsor` / `etnet` | ✅ 可用 | 胜率/平均首日 |
+| 中签率算法 `odds` | ✅ **纯算法，永远可用** | 甲/乙组多档中签率表 |
+
+**因此：本 skill 现在是「历史数据库 + 计算器」，不是「实时打新雷达」。**
+需要实时孖展/基石/暗盘时，走 `hk-ipo-subscription-advisor` 的网页抓取路径，不要指望本 skill。
+
+## 每月维护（automation 调用）
+
+```bash
+# 1. 更新上游代码（防爬虫接口失效）
+cd /Users/niusl321/.workbuddy/skills/hk-ipo-research-assistant && git pull --ff-only 2>&1
+
+# 2. 刷新保荐人缓存（7天TTL，会自己过期，这里强制刷新）
+<PY> -c "from hkipo.cache import get_sponsors; get_sponsors(force_refresh=True)"
+
+# 3. 检查 AiPO 是否复活（关键！它是本 skill 的命门）
+curl -s -o /dev/null -w "aipo=%{http_code}\n" --noproxy '*' --max-time 15 https://aipo.myiqdii.com
+
+# 4. 缓存体检
+<PY> -m hkipo.cache --list
+<PY> -m hkipo.cache --stats
+```
 
 ## 快速开始
 
